@@ -1,0 +1,63 @@
+name: Release App
+
+on:
+  workflow_call:
+    inputs:
+      app:
+        description: "Name of the app to release"
+        required: true
+        type: string
+      bump:
+        description: "Version bump type (patch, minor, major)"
+        required: true
+        type: string
+        default: "patch"
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: Get latest version
+        id: get_latest_version
+        run: |
+          latest_tag=$(git describe --tags --abbrev=0 --match "${{ inputs.app }}/v*" || echo "${{ inputs.app }}/v0.0.0")
+          echo "latest_tag=${latest_tag}" >> $GITHUB_OUTPUT
+          version=${latest_tag#*/v}
+          echo "version=${version}" >> $GITHUB_OUTPUT
+
+      - name: Bump version
+        id: bump_version
+        run: |
+          version=${{ steps.get_latest_version.outputs.version }}
+          new_version=$(npx semver -i ${{ inputs.bump }} $version)
+          echo "new_version=${new_version}" >> $GITHUB_OUTPUT
+          echo "new_tag=${{ inputs.app }}/v${new_version}" >> $GITHUB_OUTPUT
+
+      - name: Generate release notes
+        id: release_notes
+        run: |
+          latest_tag=${{ steps.get_latest_version.outputs.latest_tag }}
+          new_tag=${{ steps.bump_version.outputs.new_tag }}
+
+          echo "# ${{ inputs.app }} Release ${{ steps.bump_version.outputs.new_version }}" > release_notes.md
+          echo "" >> release_notes.md
+          git log ${latest_tag}..HEAD --oneline --no-merges -- apps/${{ inputs.app }} | sed 's/^/- /' >> release_notes.md
+
+      - name: Create Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create ${{ steps.bump_version.outputs.new_tag }} \
+            --title "${{ inputs.app }} Release ${{ steps.bump_version.outputs.new_version }}" \
+            --notes-file release_notes.md
+
+      - name: Create Git Tag
+        run: |
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git tag ${{ steps.bump_version.outputs.new_tag }}
+          git push origin ${{ steps.bump_version.outputs.new_tag }}
