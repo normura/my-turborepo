@@ -38,7 +38,7 @@ jobs:
 
       - name: Call Release Workflow
         if: github.event.inputs.create_release == 'true'
-        uses: ./.github/workflows/release-app.yml
+        uses: ./.github/workflows/base-release-app.yml
         with:
           app: ${{ github.event.inputs.app }}
           bump: ${{ github.event.inputs.bump_type }}
